@@ -22,6 +22,7 @@ type UserStore interface {
 	CreateUser(context.Context, *types.User) (*types.User, error)
 	DeleteUser(context.Context, string) error
 	UpdateUser(context.Context, string, types.UpdateUserParams) error
+	GetUserByEmail(context.Context, string) (*types.User, error)
 }
 
 type MongoUserStore struct {
@@ -107,4 +108,12 @@ func (store *MongoUserStore) UpdateUser(ctx context.Context, id string, values t
 func (store *MongoUserStore) Drop(ctx context.Context) error {
 	fmt.Println("----- dropping user collection------")
 	return store.coll.Drop(ctx)
+}
+
+func (store *MongoUserStore) GetUserByEmail(ctx context.Context, email string) (*types.User, error) {
+	var user types.User
+	if err := store.coll.FindOne(ctx, bson.M{"email": email}).Decode(&user); err != nil {
+		return nil, err
+	}
+	return &user, nil
 }

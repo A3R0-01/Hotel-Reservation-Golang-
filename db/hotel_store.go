@@ -29,6 +29,12 @@ func NewMongoHotelStore(client *mongo.Client) *MongoHotelStore {
 		coll:   client.Database(DBNAME).Collection(hotelColl),
 	}
 }
+func NewMongoHotelStoreTest(client *mongo.Client) *MongoHotelStore {
+	return &MongoHotelStore{
+		client: client,
+		coll:   client.Database(TestDBNAME).Collection(hotelColl),
+	}
+}
 
 func (store *MongoHotelStore) InsertHotel(ctx context.Context, hotel *types.Hotel) (*types.Hotel, error) {
 	resp, err := store.coll.InsertOne(ctx, hotel)
