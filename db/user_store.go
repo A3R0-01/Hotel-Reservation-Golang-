@@ -37,7 +37,13 @@ func NewMongoUserStore(client *mongo.Client) *MongoUserStore {
 		coll:   client.Database(DBNAME).Collection(userColl),
 	}
 }
+func NewMongoUserStoreTest(client *mongo.Client) *MongoUserStore {
 
+	return &MongoUserStore{
+		client: client,
+		coll:   client.Database(TestDBNAME).Collection(userColl),
+	}
+}
 func (store *MongoUserStore) GetUserByID(ctx context.Context, id string) (*types.User, error) {
 
 	oid, err := primitive.ObjectIDFromHex(id)

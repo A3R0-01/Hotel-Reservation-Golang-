@@ -1,14 +1,13 @@
 package api
 
 import (
-	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
-	"go.mongodb.org/mongo-driver/mongo"
 	"hotelapi.com/db"
 	"hotelapi.com/types"
 )
@@ -31,21 +30,22 @@ type AuthResponse struct {
 	User  *types.User `json:"user"`
 	Token string      `json:"token"`
 }
+type genericResp struct {
+	Type string `json:"type"`
+	Msg  string `json:"msg"`
+}
 
 func (h *AuthHandler) HandleAuthenticate(c *fiber.Ctx) error {
 	var authParams AuthParams
 	if err := c.BodyParser(&authParams); err != nil {
-		return err
+		return invalidCredentials(c)
 	}
 	user, err := h.userStore.GetUserByEmail(c.Context(), authParams.Email)
 	if err != nil {
-		if errors.Is(err, mongo.ErrNoDocuments) {
-			return fmt.Errorf("invalid credentials")
-		}
-		return err
+		return invalidCredentials(c)
 	}
 	if !types.IsValidPassword(user.EncryptedPassword, authParams.Password) {
-		return fmt.Errorf("invalid credentials")
+		return invalidCredentials(c)
 	}
 
 	fmt.Println("authenticated user: ", user)
@@ -55,7 +55,12 @@ func (h *AuthHandler) HandleAuthenticate(c *fiber.Ctx) error {
 	}
 	return c.JSON(resp)
 }
-
+func invalidCredentials(c *fiber.Ctx) error {
+	return c.Status(http.StatusUnauthorized).JSON(genericResp{
+		Type: "error",
+		Msg:  "invalid credentials",
+	})
+}
 func createTokenFromUser(user *types.User) string {
 	now := time.Now()
 	validTill := now.Add(time.Hour * types.HoursAuth).Unix()

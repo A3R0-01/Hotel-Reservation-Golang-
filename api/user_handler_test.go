@@ -32,7 +32,7 @@ func setup(t *testing.T) *testdb {
 	}
 
 	return &testdb{
-		UserStore: db.NewMongoUserStore(client),
+		UserStore: db.NewMongoUserStoreTest(client),
 	}
 }
 
@@ -46,7 +46,7 @@ func TestPostUser(t *testing.T) {
 		Email:     "some@gmail.com",
 		FirstName: "james",
 		LastName:  "fooo",
-		Password:  "hellomanu",
+		Password:  types.DefaultUserPassword,
 	}
 	b, _ := json.Marshal(params)
 	req := httptest.NewRequest("POST", "/", bytes.NewReader(b))

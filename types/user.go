@@ -10,11 +10,12 @@ import (
 )
 
 const (
-	bcryptCost      = 12
-	minFirstNameLen = 2
-	minLastNameLen  = 2
-	minPasswordLen  = 7
-	HoursAuth       = 4
+	bcryptCost          = 12
+	minFirstNameLen     = 2
+	minLastNameLen      = 2
+	minPasswordLen      = 7
+	HoursAuth           = 4
+	DefaultUserPassword = "hellomanu"
 )
 
 type CreateUserParams struct {
