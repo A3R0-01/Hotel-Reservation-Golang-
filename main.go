@@ -25,21 +25,26 @@ func main() {
 
 	// Declarations
 	var (
-		userStore  = db.NewMongoUserStore(client)
-		hotelStore = db.NewMongoHotelStore(client)
-		roomStore  = db.NewMongoRoomStore(client, hotelStore)
-		store      = &db.Store{
-			Hotel: hotelStore,
-			Room:  roomStore,
-			User:  userStore,
+		userStore    = db.NewMongoUserStore(client)
+		hotelStore   = db.NewMongoHotelStore(client)
+		roomStore    = db.NewMongoRoomStore(client, hotelStore)
+		bookingStore = db.NewMongoBookingStore(client)
+		store        = &db.Store{
+			Hotel:   hotelStore,
+			Room:    roomStore,
+			User:    userStore,
+			Booking: bookingStore,
 		}
-		hotelHandler = api.NewHotelHandler(store)
-		userHandler  = api.NewUserHandler(userStore)
-		authHandler  = api.NewAuthHandler(userStore)
-		app          = fiber.New(config)
-		auth         = app.Group("/api")
-		// apiV1        = app.Group("/api/v1")
-		apiV1 = app.Group("/api/v1", middleware.JWTAuthentication)
+		hotelHandler   = api.NewHotelHandler(store)
+		userHandler    = api.NewUserHandler(userStore)
+		authHandler    = api.NewAuthHandler(userStore)
+		roomHandler    = api.NewRoomHandler(store)
+		bookingHandler = api.NewBookingHandler(store)
+		// bookingHandler = api.NewBookingHandler(store)
+		app   = fiber.New(config)
+		auth  = app.Group("/api")
+		apiV1 = app.Group("/api/v1", middleware.JWTAuthentication(userStore))
+		admin = apiV1.Group("/admin", middleware.AdminAuth)
 	)
 
 	apiV1.Post("/user", userHandler.HandlePostUser)
@@ -50,17 +55,31 @@ func main() {
 
 	// Hotel Handlers
 	apiV1.Get("/hotel", hotelHandler.HandleGetHotels)
+	apiV1.Post("/hotel", hotelHandler.HandlePostHotel)
 	apiV1.Get("/hotel/:id", hotelHandler.HandleGetHotel)
 	apiV1.Get("/hotel/:id/rooms", hotelHandler.HandleGetRooms)
+	// Booking Handlers
+	apiV1.Post("/room/:id/book", roomHandler.HandleBookRoom)
+	apiV1.Get("/room/:id/book", roomHandler.HandleGetBookingsPerRoom)
+	apiV1.Get("/booking", bookingHandler.HandleGetBookings)
+	apiV1.Get("/booking/:id", bookingHandler.HandleGetBooking)
+	apiV1.Get("/booking/:id/cancel", bookingHandler.HandleCancelBooking)
+
+	// cancel booking
+
+	// Room Handlers
+	apiV1.Post("/room", roomHandler.HandlePostRoom)
+	apiV1.Get("/room/:id", roomHandler.HandleGetRoom)
+	apiV1.Delete("/room/:id", roomHandler.HandleDeleteRoom)
+	apiV1.Get("/room", roomHandler.HandleGetRooms)
 
 	// authentication
-
 	auth.Post("/auth", authHandler.HandleAuthenticate)
+
+	// admin
+
+	admin.Get("/booking", bookingHandler.HandleGetBookings)
 
 	app.Listen(*listenAddress)
 
-}
-
-func HandleFoo(c *fiber.Ctx) error {
-	return c.JSON(map[string]string{"msg": "Server is running"})
 }

@@ -7,38 +7,46 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"hotelapi.com/db"
 )
 
-func JWTAuthentication(c *fiber.Ctx) error {
-	fmt.Println("--")
+func JWTAuthentication(userStore db.UserStore) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		token, ok := c.GetReqHeaders()["X-Api-Token"]
+		if !ok {
+			fmt.Println("token not present in the header")
+			return fmt.Errorf("unauthorized user")
+		}
+		claim, err := validateJWTToken(transform(token))
+		if err != nil {
+			return err
+		}
+		// check token expiration
+		expiresFloat := claim["expires"].(float64)
+		expires := int64(expiresFloat)
+		if time.Now().Unix() > (expires) {
+			return fmt.Errorf("toke expired")
+		}
+		userID := claim["id"].(string)
+		user, err := userStore.GetUserByID(c.Context(), userID)
+		if err != nil {
+			return fmt.Errorf("unauthorized user")
+		}
+		//  set the current authenticated user to the context
+		c.Context().SetUserValue("user", user)
+		return c.Next()
+	}
 
-	token, ok := c.GetReqHeaders()["X-Api-Token"]
-	if !ok {
-		fmt.Println("token not present in the header")
-		return fmt.Errorf("unauthorized user")
-	}
-	claim, err := validateJWTToken(transform(token))
-	if err != nil {
-		return err
-	}
-	// check token expiration
-	expiresFloat := claim["expires"].(float64)
-	expires := int64(expiresFloat)
-	if time.Now().Unix() > (expires) {
-		return fmt.Errorf("toke expired")
-	}
-	return c.Next()
 }
 
 func validateJWTToken(tokenStr string) (jwt.MapClaims, error) {
 	token, err := jwt.Parse(tokenStr, parseFunc)
 	if err != nil {
-		fmt.Println("Unauthorised access", err)
-		return nil, fmt.Errorf("unauthorised access")
+		return nil, fmt.Errorf("unauthorized access")
 	}
 	if !token.Valid {
 		fmt.Println("invalid token: ")
-		return nil, fmt.Errorf("unauthorised access")
+		return nil, fmt.Errorf("unauthorized access")
 	}
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
@@ -62,3 +70,25 @@ func transform(array []string) string {
 	}
 	return storage
 }
+
+// func JWTAuthentication(c *fiber.Ctx) error {
+// 	fmt.Println("--")
+
+// 	token, ok := c.GetReqHeaders()["X-Api-Token"]
+// 	if !ok {
+// 		fmt.Println("token not present in the header")
+// 		return fmt.Errorf("unauthorized user")
+// 	}
+// 	claim, err := validateJWTToken(transform(token))
+// 	if err != nil {
+// 		return err
+// 	}
+// 	// check token expiration
+// 	expiresFloat := claim["expires"].(float64)
+// 	expires := int64(expiresFloat)
+// 	if time.Now().Unix() > (expires) {
+// 		return fmt.Errorf("toke expired")
+// 	}
+// 	userID := claim["id"]
+// 	return c.Next()
+// }

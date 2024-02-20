@@ -1,6 +1,17 @@
 package types
 
-import "go.mongodb.org/mongo-driver/bson/primitive"
+import (
+	"fmt"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+const (
+	minHotelLen    = 5
+	minHotelRating = 0
+	minLocationLen = 7
+)
 
 type Hotel struct {
 	ID       primitive.ObjectID   `bson:"_id,omitempty" json:"id,omitempty"`
@@ -10,20 +21,50 @@ type Hotel struct {
 	Rating   int                  `bson:"rating" json:"rating"`
 }
 
-type RoomType int
+type CreateHotelParams struct {
+	Name     string `json:"name"`
+	Location string `json:"location"`
+	Rating   int    `json:"rating"`
+}
 
-const (
-	_ RoomType = iota
-	SinglePersonRoom
-	DoubleRoom
-	SeaSideRoom
-	DeluxeRoom
-)
+func (params *CreateHotelParams) Validate() map[string]string {
+	errors := map[string]string{}
+	if len(params.Name) < minHotelLen {
+		errors["Name"] = fmt.Sprintf("name should be at least %d characters", minHotelLen)
+	}
+	if len(params.Location) < minLocationLen {
+		errors["Location"] = fmt.Sprintf("location should be at least %d characters", minLocationLen)
+	}
+	if params.Rating < minHotelRating {
+		errors["Rating"] = fmt.Sprintf("rating should be at least %d", minHotelRating)
+	}
+	return errors
+}
+func (params *CreateHotelParams) CreateNewHotelFromParams() *Hotel {
+	return &Hotel{
+		Name:     params.Name,
+		Location: params.Location,
+		Rating:   params.Rating,
+		Rooms:    []primitive.ObjectID{},
+	}
+}
 
-type Room struct {
-	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
-	Price       float64            `bson:"price" json:"price"`
-	Size        string             `bson:"size" json:"size"`
-	SeaSideRoom bool               `bson:"SeaSideRoom" json:"SeaSideRoom"`
-	HotelID     primitive.ObjectID `bson:"hotelID" json:"hotelID"`
+type UpdateHotelParams struct {
+	Name     string `json:"name"`
+	Location string `json:"location"`
+	Rating   int    `json:"rating"`
+}
+
+func (params *UpdateHotelParams) Validate() bson.M {
+	m := bson.M{}
+	if len(params.Name) > minHotelLen {
+		m["name"] = params.Name
+	}
+	if len(params.Location) < minLocationLen {
+		m["location"] = params.Location
+	}
+	if params.Rating < minHotelRating {
+		m["rating"] = params.Rating
+	}
+	return m
 }

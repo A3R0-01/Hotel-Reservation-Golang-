@@ -62,6 +62,7 @@ type User struct {
 	FirstName         string             `bson:"firstName" json:"firstName"`
 	LastName          string             `bson:"lastName" json:"lastName"`
 	Email             string             `bson:"email" json:"email"`
+	IsAdmin           bool               `bson:"isAdmin" json:"isAdmin"`
 	EncryptedPassword string             `bson:"EncryptedPassword" json:"-"`
 }
 

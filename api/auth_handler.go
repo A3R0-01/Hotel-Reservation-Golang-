@@ -38,24 +38,22 @@ type genericResp struct {
 func (h *AuthHandler) HandleAuthenticate(c *fiber.Ctx) error {
 	var authParams AuthParams
 	if err := c.BodyParser(&authParams); err != nil {
-		return invalidCredentials(c)
+		return InvalidCredentials(c)
 	}
 	user, err := h.userStore.GetUserByEmail(c.Context(), authParams.Email)
 	if err != nil {
-		return invalidCredentials(c)
+		return InvalidCredentials(c)
 	}
 	if !types.IsValidPassword(user.EncryptedPassword, authParams.Password) {
-		return invalidCredentials(c)
+		return InvalidCredentials(c)
 	}
-
-	fmt.Println("authenticated user: ", user)
 	resp := AuthResponse{
 		User:  user,
 		Token: createTokenFromUser(user),
 	}
 	return c.JSON(resp)
 }
-func invalidCredentials(c *fiber.Ctx) error {
+func InvalidCredentials(c *fiber.Ctx) error {
 	return c.Status(http.StatusUnauthorized).JSON(genericResp{
 		Type: "error",
 		Msg:  "invalid credentials",
@@ -71,7 +69,6 @@ func createTokenFromUser(user *types.User) string {
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	secret := os.Getenv("JWT_SECRET")
-	fmt.Println(secret)
 	tokenStr, err := token.SignedString([]byte(secret))
 	if err != nil {
 		fmt.Println("failed to sign token with secret", err)
