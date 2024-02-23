@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"net/http"
 
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -10,31 +11,38 @@ import (
 )
 
 type UserHandler struct {
-	userStore db.UserStore
+	store *db.Store
 }
 
-func NewUserHandler(userStore db.UserStore) *UserHandler {
+func NewUserHandler(store *db.Store) *UserHandler {
 	return &UserHandler{
-		userStore: userStore,
+		store: store,
 	}
 }
 func (h *UserHandler) HandleGetUserById(c *fiber.Ctx) error {
 	var (
 		id = c.Params("id")
 	)
-	user, err := h.userStore.GetUserByID(c.Context(), id)
+	user, ok := c.Context().Value("user").(*types.User)
+	if !ok {
+		return UnauthorizedNormal(c)
+	}
+	if (user.ID.Hex() != id) && !user.IsAdmin {
+		return UnauthorizedNormal(c)
+	}
+	user, err := h.store.User.GetUserByID(c.Context(), id)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return c.JSON(map[string]string{"msg": "not found"})
+			return NotFound(c, "user")
 		}
-		return err
+		return InternalServerError(c, "could not fetch user please try again")
 	}
 	return c.JSON(user)
 }
 func (h *UserHandler) HandleGetUsers(c *fiber.Ctx) error {
-	users, err := h.userStore.GetUsers(c.Context())
+	users, err := h.store.User.GetUsers(c.Context())
 	if err != nil {
-		return err
+		return InternalServerError(c, "could not fetch users please try again")
 	}
 	return c.JSON(users)
 }
@@ -44,24 +52,32 @@ func (h *UserHandler) HandlePostUser(c *fiber.Ctx) error {
 		return err
 	}
 	if err := params.Validate(); len(err) > 0 {
-		return c.JSON(err)
+		return c.Status(http.StatusBadRequest).JSON(err)
 	}
 	user, err := types.NewUserFromParams(params)
 	if err != nil {
-		return err
+		return InternalServerError(c, "failed to encrypt password")
 	}
-	createdUser, err := h.userStore.CreateUser(c.Context(), user)
+	createdUser, err := h.store.User.CreateUser(c.Context(), user)
 	if err != nil {
-		return err
+		return InternalServerError(c, "failed to create user")
 	}
 	return c.JSON(createdUser)
 }
 
 func (h *UserHandler) HandleDeleteUser(c *fiber.Ctx) error {
+	user, ok := c.Context().Value("user").(*types.User)
 	userId := c.Params("id")
-	err := h.userStore.DeleteUser(c.Context(), userId)
+	if !ok {
+		return UnauthorizedNormal(c)
+	}
+	if (user.ID.Hex() != userId) && !user.IsAdmin {
+		return UnauthorizedNormal(c)
+	}
+	err := h.store.User.DeleteUser(c.Context(), userId)
 	if err != nil {
-		return err
+		return InternalServerError(c, "failed to delete user")
+
 	}
 	return c.JSON(map[string]string{
 		"msg": "user deleted",
@@ -70,11 +86,18 @@ func (h *UserHandler) HandleDeleteUser(c *fiber.Ctx) error {
 func (h *UserHandler) HandlePutUser(c *fiber.Ctx) error {
 	var params types.UpdateUserParams
 	if err := c.BodyParser(&params); err != nil {
-		return c.JSON(map[string]string{"msg": "invalid fields"})
+		return BadRequest(c)
 	}
 	userId := c.Params("id")
-	if err := h.userStore.UpdateUser(c.Context(), userId, params); err != nil {
-		return err
+	user, ok := c.Context().Value("user").(*types.User)
+	if !ok {
+		return UnauthorizedNormal(c)
+	}
+	if (user.ID.Hex() != userId) && !user.IsAdmin {
+		return UnauthorizedNormal(c)
+	}
+	if err := h.store.User.UpdateUser(c.Context(), userId, params); err != nil {
+		return InternalServerError(c, "failed to update")
 	}
 	return c.JSON(map[string]string{"msg": "user updated"})
 }

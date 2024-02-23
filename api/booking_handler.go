@@ -1,11 +1,11 @@
 package api
 
 import (
-	"net/http"
+	"errors"
 
 	"github.com/gofiber/fiber/v2"
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"hotelapi.com/db"
 	"hotelapi.com/types"
 )
@@ -24,27 +24,18 @@ func NewBookingHandler(store *db.Store) *BookingHandler {
 func (h *BookingHandler) HandleGetBooking(c *fiber.Ctx) error {
 	oid, err := primitive.ObjectIDFromHex(c.Params("id"))
 	if err != nil {
-		return c.Status(http.StatusBadRequest).JSON(genericResp{
-			Type: "error",
-			Msg:  "invalid booking",
-		})
+		return BadRequest(c)
 	}
-	booking, err := h.store.Booking.GetBookingByID(c.Context(), bson.M{"_id": oid})
+	booking, err := h.store.Booking.GetBookingByID(c.Context(), db.Map{"_id": oid})
 	if err != nil {
-		return err
+		return NotFound(c, "booking")
 	}
 	user, ok := c.Context().Value("user").(*types.User)
 	if !ok {
-		return c.Status(http.StatusInternalServerError).JSON(genericResp{
-			Type: "error",
-			Msg:  "Internal Server Error",
-		})
+		return InternalServerError(c, "could not identify user")
 	}
 	if user.ID != booking.UserID && !user.IsAdmin {
-		return c.Status(http.StatusUnauthorized).JSON(genericResp{
-			Type: "error",
-			Msg:  "you are unauthorized to access this info",
-		})
+		return UnauthorizedNormal(c)
 	}
 	return c.JSON(booking)
 }
@@ -53,46 +44,36 @@ func (h *BookingHandler) HandleGetBooking(c *fiber.Ctx) error {
 func (h *BookingHandler) HandleGetBookings(c *fiber.Ctx) error {
 	user, ok := c.Context().Value("user").(*types.User)
 	if !ok {
-		return c.Status(http.StatusInternalServerError).JSON(genericResp{
-			Type: "error",
-			Msg:  "Internal Server Error",
-		})
+		return UnauthorizedNormal(c)
 	}
 	var bookings []*types.Booking
 	if user.IsAdmin {
-		booking, err := h.store.Booking.GetBookings(c.Context(), bson.M{})
+		booking, err := h.store.Booking.GetBookings(c.Context(), db.Map{})
 		if err != nil {
-			return err
+			return NotFound(c, "bookings")
 		}
 		bookings = booking
 	} else {
-		booking, err := h.store.Booking.GetBookings(c.Context(), bson.M{"userID": user.ID})
+		booking, err := h.store.Booking.GetBookings(c.Context(), db.Map{"userID": user.ID})
 		if err != nil {
-			return err
+			return NotFound(c, "bookings")
 		}
 		bookings = booking
 	}
 
 	return c.JSON(bookings)
 }
-func (h *BookingHandler) HandleUpdateBooking(c *fiber.Ctx) error {
-	return nil
-}
-
 func (h *BookingHandler) HandleCancelBooking(c *fiber.Ctx) error {
 	id := c.Params("id")
 	user, ok := c.Context().Value("user").(*types.User)
 	if !ok {
-		return c.Status(http.StatusInternalServerError).JSON(genericResp{
-			Type: "error",
-			Msg:  "Internal Server Error",
-		})
+		return UnauthorizedSpec(c, "please sign in again")
 	}
 	if err := h.store.Booking.CancelBooking(c.Context(), id, user); err != nil {
-		return c.Status(http.StatusInternalServerError).JSON(genericResp{
-			Type: "error",
-			Msg:  err.Error(),
-		})
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return NotFound(c, "booking")
+		}
+		return InternalServerError(c, "failed to cancel booking")
 	}
 	return c.JSON(genericResp{
 		Type: "success",

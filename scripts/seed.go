@@ -4,113 +4,41 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"hotelapi.com/api"
 	"hotelapi.com/db"
+	"hotelapi.com/db/fixtures"
 	"hotelapi.com/types"
 )
 
 var (
-	client       *mongo.Client
-	roomStore    db.RoomStore
-	hotelStore   db.HotelStore
-	userStore    db.UserStore
-	bookingStore db.BookingStore
-	ctx          = context.Background()
+	client *mongo.Client
+	store  *db.Store
+	ctx    = context.Background()
 )
 
-func seedBooking(userID, roomID primitive.ObjectID, fromDate, tillDate time.Time, numPersons int) {
-	booking := &types.Booking{
-		UserID:   userID,
-		RoomID:   roomID,
-		FromDate: fromDate,
-		TillDate: tillDate,
-	}
-	insertedBooking, err := bookingStore.InsertBooking(context.Background(), booking)
-	if err != nil {
-		log.Fatal("failed to book a room\n", err)
-	}
-	fmt.Println(insertedBooking.ID, insertedBooking.Cancelled)
-}
-func seedUser(isAdmin bool, fname, lname, email, password string) primitive.ObjectID {
-	user, err := types.NewUserFromParams(types.CreateUserParams{
-		Email:     email,
-		FirstName: fname,
-		LastName:  lname,
-		Password:  password,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	user.IsAdmin = isAdmin
-	insertedUser, err := userStore.CreateUser(ctx, user)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return insertedUser.ID
-
-}
-func seedHotel(name, location string, rating int) []*types.Room {
-	hotel := types.Hotel{
-		Name:     name,
-		Location: location,
-		Rooms:    []primitive.ObjectID{},
-		Rating:   rating,
-	}
-
-	rooms := []types.Room{
-		{
-			Size:        "small",
-			SeaSideRoom: true,
-			Price:       99.9,
-		},
-		{
-			Size:        "kingsize",
-			SeaSideRoom: true,
-			Price:       199.9,
-		},
-		{
-			Size:        "normal",
-			SeaSideRoom: false,
-			Price:       19.9,
-		},
-	}
-
-	insertedHotel, err := hotelStore.InsertHotel(ctx, &hotel)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("Roomms for hotel: ", insertedHotel.Name, "\t", insertedHotel.ID)
-	insertedRooms := []*types.Room{}
-	for _, room := range rooms {
-		room.HotelID = insertedHotel.ID
-		insertedRoom, err := roomStore.InsertRoom(ctx, &room)
-		insertedRooms = append(insertedRooms, insertedRoom)
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Println(insertedRoom)
-	}
-	return insertedRooms
-}
 func main() {
-	userID := seedUser(false, "Esther", "Mutane", "esther@gmail.com", types.DefaultUserPassword)
-	userID2 := seedUser(false, "Tilly", "Monkey", "tilly@gmail.com", types.DefaultUserPassword)
-	_ = seedUser(true, "Harvey", "Specter", "harvey@gmail.com", "1234bsrvnt")
-	hotel1 := seedHotel("Bellucia", "France", 5)
-	_ = seedHotel("The Cozy Hotel", "Netherlands", 3)
-	_ = seedHotel("Meikles Hotel", "Zimbabwe", 4)
-	for key, id := range []primitive.ObjectID{userID, userID2} {
-		for key2, room := range hotel1 {
-			number2 := (key2 + 1) * (key + 1) * 24 * 2
-			from := time.Now().Add(time.Hour * time.Duration(number2))
-			till := from.Add(time.Hour * (24 * 2))
-			seedBooking(id, room.ID, from, till, 2)
-		}
+	admin := fixtures.AddUser(store, true, "harvey", "Specter", "1234bsrvnt")
+	user := fixtures.AddUser(store, false, "tilly", "Monkey", types.DefaultUserPassword)
+	hotel := fixtures.AddHotel(store, "Njeke Hotel", "Harare, Zimbabwe", 4, []primitive.ObjectID{})
+	room := fixtures.AddRoom(store, 88.50, "large", true, hotel.ID)
+	booking := fixtures.AddBooking(store, room.ID, user.ID, time.Now().AddDate(0, 0, 1), time.Now().AddDate(0, 0, 5))
+	fmt.Println("Admin:->\t", admin, "\n Token: ->\t", api.CreateTokenFromUser(admin))
+	fmt.Println("User:->\t", user, "\n Token: ->\t", api.CreateTokenFromUser(user))
+
+	for i := 0; i < 100; i++ {
+		name := fmt.Sprint("random hotel ", i)
+		location := fmt.Sprint("location ", i)
+		_ = fixtures.AddHotel(store, name, location, rand.Intn(5)+1, []primitive.ObjectID{})
 	}
+	fmt.Println("Hotel:->\t", hotel)
+	fmt.Println("Room:->\t", room)
+	fmt.Println("Booking:->\t", booking)
 }
 
 func init() {
@@ -122,9 +50,11 @@ func init() {
 	if err := client.Database(db.DBNAME).Drop(ctx); err != nil {
 		log.Fatal(err)
 	}
-	hotelStore = db.NewMongoHotelStore(client)
-	roomStore = db.NewMongoRoomStore(client, hotelStore)
-	userStore = db.NewMongoUserStore(client)
-	bookingStore = db.NewMongoBookingStore(client)
+	store = &db.Store{
+		Room:    db.NewMongoRoomStore(client),
+		User:    db.NewMongoUserStore(client),
+		Hotel:   db.NewMongoHotelStore(client),
+		Booking: db.NewMongoBookingStore(client),
+	}
 
 }

@@ -2,7 +2,6 @@ package api
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"time"
 
@@ -13,12 +12,12 @@ import (
 )
 
 type AuthHandler struct {
-	userStore db.UserStore
+	store *db.Store
 }
 
-func NewAuthHandler(userStore db.UserStore) *AuthHandler {
+func NewAuthHandler(store *db.Store) *AuthHandler {
 	return &AuthHandler{
-		userStore: userStore,
+		store: store,
 	}
 }
 
@@ -38,9 +37,9 @@ type genericResp struct {
 func (h *AuthHandler) HandleAuthenticate(c *fiber.Ctx) error {
 	var authParams AuthParams
 	if err := c.BodyParser(&authParams); err != nil {
-		return InvalidCredentials(c)
+		return BadRequest(c)
 	}
-	user, err := h.userStore.GetUserByEmail(c.Context(), authParams.Email)
+	user, err := h.store.User.GetUserByEmail(c.Context(), authParams.Email)
 	if err != nil {
 		return InvalidCredentials(c)
 	}
@@ -49,17 +48,12 @@ func (h *AuthHandler) HandleAuthenticate(c *fiber.Ctx) error {
 	}
 	resp := AuthResponse{
 		User:  user,
-		Token: createTokenFromUser(user),
+		Token: CreateTokenFromUser(user),
 	}
 	return c.JSON(resp)
 }
-func InvalidCredentials(c *fiber.Ctx) error {
-	return c.Status(http.StatusUnauthorized).JSON(genericResp{
-		Type: "error",
-		Msg:  "invalid credentials",
-	})
-}
-func createTokenFromUser(user *types.User) string {
+
+func CreateTokenFromUser(user *types.User) string {
 	now := time.Now()
 	validTill := now.Add(time.Hour * types.HoursAuth).Unix()
 	claims := jwt.MapClaims{

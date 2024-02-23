@@ -2,45 +2,21 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"hotelapi.com/db"
+	"hotelapi.com/db/fixtures"
 	"hotelapi.com/types"
 )
-
-type testdb struct {
-	db.UserStore
-}
-
-func (tdb *testdb) teardown(t *testing.T) {
-	if err := tdb.UserStore.Drop(context.TODO()); err != nil {
-		t.Fatal(err)
-	}
-}
-func setup(t *testing.T) *testdb {
-	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(db.DBURI))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return &testdb{
-		UserStore: db.NewMongoUserStoreTest(client),
-	}
-}
 
 func TestPostUser(t *testing.T) {
 	testDB := setup(t)
 	defer testDB.teardown(t)
 	app := fiber.New()
-	userHandler := NewUserHandler(testDB.UserStore)
+	userHandler := NewUserHandler(testDB.store)
 	app.Post("/", userHandler.HandlePostUser)
 	params := types.CreateUserParams{
 		Email:     "some@gmail.com",
@@ -53,7 +29,7 @@ func TestPostUser(t *testing.T) {
 	req.Header.Add("Content-Type", "application/json")
 	resp, err := app.Test(req)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 	var user types.User
 	json.NewDecoder(resp.Body).Decode(&user)
@@ -77,20 +53,26 @@ func TestPostUser(t *testing.T) {
 func TestGetUsers(t *testing.T) {
 	testDB := setup(t)
 	defer testDB.teardown(t)
-	app := fiber.New()
-	userHandler := NewUserHandler(testDB.UserStore)
-	app.Get("/", userHandler.HandleGetUsers)
-	req := httptest.NewRequest("GET", "/", bytes.NewReader(nil))
+	var (
+		app         = fiber.New()
+		userHandler = NewUserHandler(testDB.store)
+		testUser    = fixtures.AddUser(testDB.store, true, "james", "foo", types.DefaultUserPassword)
+		req         = httptest.NewRequest("GET", "/", bytes.NewReader(nil))
+		group       = app.Group("/", JWTAuthentication(testDB.store.User))
+
+		token = CreateTokenFromUser(testUser)
+	)
+	group.Get("/", userHandler.HandleGetUsers)
+	req.Header.Add("x-api-token", token)
 	resp, err := app.Test(req)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
-	var users []types.User
+	var users []*types.User
 	json.NewDecoder(resp.Body).Decode(&users)
 	if resp.Status != "200 OK" {
-		t.Error("Request Failed")
+		t.Fatal("Request Failed")
 	}
-	fmt.Println(users, "\n", resp.Status)
-
+	fmt.Println(users, "\t", resp.Status)
 }

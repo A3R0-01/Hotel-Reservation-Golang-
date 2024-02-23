@@ -1,7 +1,8 @@
-package middleware
+package api
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -14,23 +15,34 @@ func JWTAuthentication(userStore db.UserStore) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		token, ok := c.GetReqHeaders()["X-Api-Token"]
 		if !ok {
-			fmt.Println("token not present in the header")
-			return fmt.Errorf("unauthorized user")
+			return c.Status(http.StatusUnauthorized).JSON(map[string]string{
+				"Type": "unauthorized",
+				"Msg":  "please login ",
+			})
 		}
 		claim, err := validateJWTToken(transform(token))
 		if err != nil {
-			return err
+			return c.Status(http.StatusUnauthorized).JSON(map[string]string{
+				"Type": "error",
+				"Msg":  "invalid user or token",
+			})
 		}
 		// check token expiration
 		expiresFloat := claim["expires"].(float64)
 		expires := int64(expiresFloat)
 		if time.Now().Unix() > (expires) {
-			return fmt.Errorf("toke expired")
+			return c.Status(http.StatusUnauthorized).JSON(map[string]string{
+				"Type": "unauthorized",
+				"Msg":  "please login again",
+			})
 		}
 		userID := claim["id"].(string)
 		user, err := userStore.GetUserByID(c.Context(), userID)
 		if err != nil {
-			return fmt.Errorf("unauthorized user")
+			return c.Status(http.StatusUnauthorized).JSON(map[string]string{
+				"Type": "unauthorized",
+				"Msg":  "you are not registered",
+			})
 		}
 		//  set the current authenticated user to the context
 		c.Context().SetUserValue("user", user)

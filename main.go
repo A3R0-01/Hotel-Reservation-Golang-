@@ -9,7 +9,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"hotelapi.com/api"
-	"hotelapi.com/api/middleware"
 	"hotelapi.com/db"
 )
 
@@ -21,13 +20,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	config := fiber.Config{ErrorHandler: db.ErrorHandler}
+	config := fiber.Config{ErrorHandler: api.ErrorHandler}
 
 	// Declarations
 	var (
 		userStore    = db.NewMongoUserStore(client)
 		hotelStore   = db.NewMongoHotelStore(client)
-		roomStore    = db.NewMongoRoomStore(client, hotelStore)
+		roomStore    = db.NewMongoRoomStore(client)
 		bookingStore = db.NewMongoBookingStore(client)
 		store        = &db.Store{
 			Hotel:   hotelStore,
@@ -36,26 +35,24 @@ func main() {
 			Booking: bookingStore,
 		}
 		hotelHandler   = api.NewHotelHandler(store)
-		userHandler    = api.NewUserHandler(userStore)
-		authHandler    = api.NewAuthHandler(userStore)
+		userHandler    = api.NewUserHandler(store)
+		authHandler    = api.NewAuthHandler(store)
 		roomHandler    = api.NewRoomHandler(store)
 		bookingHandler = api.NewBookingHandler(store)
 		// bookingHandler = api.NewBookingHandler(store)
 		app   = fiber.New(config)
 		auth  = app.Group("/api")
-		apiV1 = app.Group("/api/v1", middleware.JWTAuthentication(userStore))
-		admin = apiV1.Group("/admin", middleware.AdminAuth)
+		apiV1 = app.Group("/api/v1", api.JWTAuthentication(userStore))
+		admin = apiV1.Group("/admin", api.AdminAuth)
 	)
 
 	apiV1.Post("/user", userHandler.HandlePostUser)
 	apiV1.Delete("/user/:id", userHandler.HandleDeleteUser)
 	apiV1.Put("/user/:id", userHandler.HandlePutUser)
-	apiV1.Get("/user", userHandler.HandleGetUsers)
 	apiV1.Get("/user/:id", userHandler.HandleGetUserById)
 
 	// Hotel Handlers
 	apiV1.Get("/hotel", hotelHandler.HandleGetHotels)
-	apiV1.Post("/hotel", hotelHandler.HandlePostHotel)
 	apiV1.Get("/hotel/:id", hotelHandler.HandleGetHotel)
 	apiV1.Get("/hotel/:id/rooms", hotelHandler.HandleGetRooms)
 	// Booking Handlers
@@ -68,16 +65,17 @@ func main() {
 	// cancel booking
 
 	// Room Handlers
-	apiV1.Post("/room", roomHandler.HandlePostRoom)
 	apiV1.Get("/room/:id", roomHandler.HandleGetRoom)
-	apiV1.Delete("/room/:id", roomHandler.HandleDeleteRoom)
 	apiV1.Get("/room", roomHandler.HandleGetRooms)
 
 	// authentication
 	auth.Post("/auth", authHandler.HandleAuthenticate)
 
 	// admin
-
+	admin.Get("/user", userHandler.HandleGetUsers)
+	admin.Post("/hotel", hotelHandler.HandlePostHotel)
+	admin.Post("/room", roomHandler.HandlePostRoom)
+	admin.Delete("/room/:id", roomHandler.HandleDeleteRoom)
 	admin.Get("/booking", bookingHandler.HandleGetBookings)
 
 	app.Listen(*listenAddress)

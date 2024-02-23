@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
-	"hotelapi.com/db"
+	"hotelapi.com/db/fixtures"
 	"hotelapi.com/types"
 )
 
@@ -18,9 +17,10 @@ func TestAuthenticateSuccess(t *testing.T) {
 	testDB := setup(t)
 	defer testDB.teardown(t)
 	app := fiber.New()
-	authHandler := NewAuthHandler(testDB.UserStore)
+	authHandler := NewAuthHandler(testDB.store)
 	app.Post("/auth", authHandler.HandleAuthenticate)
-	testUser := makeTestUser(t, testDB.UserStore)
+	testUser := fixtures.AddUser(testDB.store, false, "james", "foo", types.DefaultUserPassword)
+
 	params := AuthParams{
 		Email:    testUser.Email,
 		Password: types.DefaultUserPassword,
@@ -53,9 +53,9 @@ func TestAuthenticateWrongPassword(t *testing.T) {
 	testDB := setup(t)
 	defer testDB.teardown(t)
 	app := fiber.New()
-	authHandler := NewAuthHandler(testDB.UserStore)
+	authHandler := NewAuthHandler(testDB.store)
 	app.Post("/auth", authHandler.HandleAuthenticate)
-	testUser := makeTestUser(t, testDB.UserStore)
+	testUser := fixtures.AddUser(testDB.store, false, "james", "foo", types.DefaultUserPassword)
 	params := AuthParams{
 		Email:    testUser.Email,
 		Password: "hellopeople",
@@ -77,23 +77,4 @@ func TestAuthenticateWrongPassword(t *testing.T) {
 	if response.Type != "error" {
 		t.Fatalf("expected gen response type to be error but got %s ", response.Type)
 	}
-}
-func makeTestUser(t *testing.T, userStore db.UserStore) *types.User {
-	newUser := types.CreateUserParams{
-		Email:     "some@gmail.com",
-		FirstName: "james",
-		LastName:  "fooo",
-		Password:  types.DefaultUserPassword,
-	}
-	encryptedTestUser, err := types.NewUserFromParams(newUser)
-	if err != nil {
-		t.Fatal(err)
-
-	}
-	testUser, err := userStore.CreateUser(context.Background(), encryptedTestUser)
-	if err != nil {
-		t.Fatal(err)
-
-	}
-	return testUser
 }

@@ -14,9 +14,9 @@ const bookingColl = "bookings"
 
 type BookingStore interface {
 	InsertBooking(context.Context, *types.Booking) (*types.Booking, error)
-	GetBookingByID(context.Context, bson.M) (*types.Booking, error)
-	UpdateBooking(context.Context, bson.M, bson.M) error
-	GetBookings(context.Context, bson.M) ([]*types.Booking, error)
+	GetBookingByID(context.Context, Map) (*types.Booking, error)
+	UpdateBooking(context.Context, Map, Map) error
+	GetBookings(context.Context, Map) ([]*types.Booking, error)
 	CancelBooking(ctx context.Context, id string, user *types.User) error
 }
 
@@ -31,6 +31,12 @@ func NewMongoBookingStore(client *mongo.Client) *MongoBookingStore {
 		coll:   client.Database(DBNAME).Collection(bookingColl),
 	}
 }
+func NewMongoBookingStoreTest(client *mongo.Client) *MongoBookingStore {
+	return &MongoBookingStore{
+		client: client,
+		coll:   client.Database(TestDBNAME).Collection(bookingColl),
+	}
+}
 
 func (store *MongoBookingStore) InsertBooking(ctx context.Context, booking *types.Booking) (*types.Booking, error) {
 
@@ -42,18 +48,18 @@ func (store *MongoBookingStore) InsertBooking(ctx context.Context, booking *type
 	return booking, nil
 }
 
-func (store *MongoBookingStore) GetBookingByID(ctx context.Context, filter bson.M) (*types.Booking, error) {
+func (store *MongoBookingStore) GetBookingByID(ctx context.Context, filter Map) (*types.Booking, error) {
 	var booking types.Booking
 	err := store.coll.FindOne(ctx, filter).Decode(&booking)
 	return &booking, err
 }
 
-func (store *MongoBookingStore) UpdateBooking(ctx context.Context, filter bson.M, values bson.M) error {
+func (store *MongoBookingStore) UpdateBooking(ctx context.Context, filter Map, values Map) error {
 	_, err := store.coll.UpdateOne(ctx, filter, values)
 	return err
 }
 
-func (store *MongoBookingStore) GetBookings(ctx context.Context, filter bson.M) ([]*types.Booking, error) {
+func (store *MongoBookingStore) GetBookings(ctx context.Context, filter Map) ([]*types.Booking, error) {
 	var bookings []*types.Booking
 	resp, err := store.coll.Find(ctx, filter)
 	if err != nil {
@@ -71,7 +77,7 @@ func (store *MongoBookingStore) CancelBooking(ctx context.Context, id string, us
 	if err != nil {
 		return fmt.Errorf("invalid booking")
 	}
-	booking, err := store.GetBookingByID(ctx, bson.M{"_id": oid})
+	booking, err := store.GetBookingByID(ctx, Map{"_id": oid})
 	if err != nil {
 		return fmt.Errorf("invalid booking")
 	}

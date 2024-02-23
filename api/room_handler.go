@@ -2,13 +2,13 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"hotelapi.com/db"
 	"hotelapi.com/types"
 )
@@ -43,42 +43,40 @@ func (h *RoomHandler) HandleGetRoom(c *fiber.Ctx) error {
 	id := c.Params("id")
 	room, err := h.store.Room.GetRoomByIDOne(c.Context(), id)
 	if err != nil {
-		return err
+		return NotFound(c, "room")
 	}
 	return c.JSON(room)
 }
 func (h *RoomHandler) HandleGetBookingsPerRoom(c *fiber.Ctx) error {
 	oid, err := primitive.ObjectIDFromHex(c.Params("id"))
 	if err != nil {
-		return c.Status(http.StatusBadRequest).JSON(genericResp{
-			Type: "error",
-			Msg:  "invalid room",
-		})
+		return InvalidID(c, "booking")
 	}
-	bookings, err := h.store.Booking.GetBookings(c.Context(), bson.M{
+	bookings, err := h.store.Booking.GetBookings(c.Context(), db.Map{
 		"roomID": oid,
-		"fromDate": bson.M{
+		"fromDate": db.Map{
 			"$gte": time.Now(),
 		},
 		"cancelled": false,
 	})
 	if err != nil {
-		return err
+		return InternalServerError(c, "could not get bookings")
 	}
 	return c.JSON(bookings)
 }
 func (h *RoomHandler) HandlePostRoom(c *fiber.Ctx) error {
 	var params types.CreateRoomParams
 	if err := c.BodyParser(&params); err != nil {
-		return fmt.Errorf("failed to create room")
+		return BadRequest(c)
+
 	}
 	room, err := params.CreateRoom()
 	if err != nil {
-		return fmt.Errorf("failed to create room")
+		return InternalServerError(c, "failed to create room")
 	}
-	createdRoom, err := h.store.Room.InsertRoom(c.Context(), &room)
+	createdRoom, err := h.store.Room.InsertRoom(c.Context(), &room, h.store)
 	if err != nil {
-		return fmt.Errorf("failed to create room")
+		return InternalServerError(c, "failed to create room")
 	}
 	return c.JSON(createdRoom)
 
@@ -87,10 +85,10 @@ func (h *RoomHandler) HandleDeleteRoom(c *fiber.Ctx) error {
 	id := c.Params("id")
 	err := h.store.Room.DeleteRoom(c.Context(), id)
 	if err != nil {
-		return c.Status(http.StatusNoContent).JSON(genericResp{
-			Type: "error",
-			Msg:  err.Error(),
-		})
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return NotFound(c, "room")
+		}
+		return InternalServerError(c, "failed to delete room")
 	}
 	return c.JSON(genericResp{
 		Type: "success",
@@ -104,33 +102,27 @@ func (store *RoomHandler) HandlePutRoom(c *fiber.Ctx) error {
 func (h *RoomHandler) HandleBookRoom(c *fiber.Ctx) error {
 	var params BookRoomParams
 	if err := c.BodyParser(&params); err != nil {
-		return err
+		return BadRequest(c)
 	}
 	if err := params.validate(); err != nil {
-		return err
+		return BadRequest(c)
 	}
 	roomOID, err := primitive.ObjectIDFromHex(c.Params("id"))
 
 	if err != nil {
-		return err
+		return InvalidID(c, "room")
 	}
 
 	user, ok := c.Context().Value("user").(*types.User)
 	if !ok {
-		return c.Status(http.StatusInternalServerError).JSON(genericResp{
-			Type: "error",
-			Msg:  "Internal Server Error",
-		})
+		return UnauthorizedNormal(c)
 	}
 	roomAvail, err := h.isRoomAvailable(c.Context(), roomOID, params)
 	if err != nil {
-		return err
+		return Conflict(c, "room is booked")
 	}
 	if !roomAvail {
-		return c.Status(http.StatusConflict).JSON(genericResp{
-			Type: "error",
-			Msg:  "room is occupied",
-		})
+		return Conflict(c, "room is booked")
 	}
 
 	booking := types.Booking{
@@ -142,33 +134,59 @@ func (h *RoomHandler) HandleBookRoom(c *fiber.Ctx) error {
 	}
 	inserted, err := h.store.Booking.InsertBooking(c.Context(), &booking)
 	if err != nil {
-		return err
+		return InternalServerError(c, "failed to book room")
 	}
-
 	return c.JSON(inserted)
 
 }
 
 func (h *RoomHandler) HandleGetRooms(c *fiber.Ctx) error {
-	rooms, err := h.store.Room.GetRooms(c.Context(), bson.M{})
+	rooms, err := h.store.Room.GetRooms(c.Context(), db.Map{})
 	if err != nil {
-		return err
+		return NotFound(c, "room")
 	}
 	return c.JSON(rooms)
 }
 
 func (h *RoomHandler) isRoomAvailable(ctx context.Context, id primitive.ObjectID, params BookRoomParams) (bool, error) {
-	filter := bson.M{
+	// unreliable filter
+	// filter := bson.M{
+	// 	"roomID": id,
+	// 	"fromDate": bson.M{
+	// 		"$gte": params.FromDate,
+	// 	},
+	// 	"tillDate": bson.M{
+	// 		"$lte": params.TillDate,
+	// 	},
+	// }
+	filter2 := db.Map{
 		"roomID": id,
-		"tillDate": bson.M{
+		"fromDate": db.Map{
+			"$lte": params.FromDate,
+		},
+		"tillDate": db.Map{
 			"$gte": params.FromDate,
 		},
 	}
-	bookings, err := h.store.Booking.GetBookings(ctx, filter)
+	filter3 := db.Map{
+		"roomID": id,
+		"fromDate": db.Map{
+			"$gte": params.FromDate,
+		},
+		"FromDate": db.Map{
+			"$lte": params.TillDate,
+		},
+	}
+	bookings, err := h.store.Booking.GetBookings(ctx, filter3)
+	if err != nil {
+		return false, err
+	}
+	bookings2, err := h.store.Booking.GetBookings(ctx, filter2)
 	if err != nil {
 		return false, err
 	}
 	ok := len(bookings) == 0
-	return ok, nil
+	ok2 := len(bookings2) == 0
+	return ok && ok2, nil
 
 }
