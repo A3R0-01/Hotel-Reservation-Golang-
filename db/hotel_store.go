@@ -5,6 +5,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"hotelapi.com/types"
 )
 
@@ -14,7 +15,7 @@ type HotelStore interface {
 	InsertHotel(context.Context, *types.Hotel) (*types.Hotel, error)
 	GetHotelByID(context.Context, Map) (*types.Hotel, error)
 	Update(context.Context, Map, Map) error
-	GetHotels(context.Context, Map) ([]*types.Hotel, error)
+	GetHotels(context.Context, Map, *Pagination) ([]*types.Hotel, error)
 }
 
 type MongoHotelStore struct {
@@ -53,9 +54,12 @@ func (store *MongoHotelStore) GetHotelByID(ctx context.Context, filter Map) (*ty
 	err := store.coll.FindOne(ctx, filter).Decode(&hotel)
 	return &hotel, err
 }
-func (store *MongoHotelStore) GetHotels(ctx context.Context, filter Map) ([]*types.Hotel, error) {
+func (store *MongoHotelStore) GetHotels(ctx context.Context, filter Map, pagination *Pagination) ([]*types.Hotel, error) {
 	var hotels []*types.Hotel
-	resp, err := store.coll.Find(ctx, filter)
+	opts := options.FindOptions{}
+	opts.SetSkip(int64((pagination.Page - 1) * pagination.Limit))
+	opts.SetLimit(int64(pagination.Limit))
+	resp, err := store.coll.Find(ctx, filter, &opts)
 	if err != nil {
 		return nil, err
 	}

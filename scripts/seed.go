@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -42,6 +43,9 @@ func main() {
 }
 
 func init() {
+	if err := godotenv.Load(); err != nil {
+		log.Fatal(err)
+	}
 	var err error
 	client, err = mongo.Connect(context.TODO(), options.Client().ApplyURI(db.DBURI))
 	if err != nil {
